@@ -39,22 +39,27 @@ def original_scale(predicted_data, training_data_mean, training_data_std):
 
 #%%
 time_length = 24
+n_pred = 1
+
 def make_dataset(data, target_column):
     
     inputs_data = []
     
-    for i in range(len(data)-time_length):
+    for i in range(len(data)-time_length-n_pred+1):
         temp_set = data[i:(i+time_length)].copy()
         inputs_data.append(temp_set)
-    inputs_target = data[target_column][time_length:]
+    
+    inputs_target = np.zeros(shape=(len(data)-time_length-n_pred+1, n_pred))
+    for i in range(len(data)-time_length-n_pred+1):
+        for j in range(n_pred):
+            inputs_target[i, j] = data[target_column][time_length + i + j]
 
     inputs_data_np = [np.array(inputs_data) for inputs_data in inputs_data]
     inputs_data_np = np.array(inputs_data_np)
     
-    inputs_target_np = np.array(inputs_target).reshape(len(inputs_data), 1)
+    inputs_target_np = np.array(inputs_target)
 
     return inputs_data_np, inputs_target_np
-
 #%%
 N225_normalized, N225_mean, N225_std = zscore(N225, N225)
 LSTM_inputs_data, LSTM_inputs_target = make_dataset(N225_normalized, target_column='Close')
