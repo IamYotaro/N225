@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 import os
+import pandas_datareader.data as web
+import matplotlib.pyplot as plt
+import pickle
 
 '''
 from google.colab import drive
@@ -10,21 +13,18 @@ drive.mount('/content/gdrive')
 '''
 
 PATH = 'E:/AnacondaProjects/N225'
+#PATH = '/home/ky/AnacondaProjects/N225'
 os.chdir(PATH)
 
 #%%
-N225 = pd.read_csv('^N225.csv', sep=',')
-def data_arrange(data, date_column, drop_column):
-    data.drop(drop_column, axis=1, inplace=True)
-    pd.to_datetime(data[date_column])
-    data.set_index(date_column, inplace=True)
-    data.replace('null', np.nan, inplace=True)
-    data.dropna(inplace=True)
-    data = data.astype(np.float64)
-    return data
+N225 = web.DataReader("NIKKEI225","fred","1950/5/16")
+N225.index = pd.to_datetime(N225.index)
+N225.dropna(how='any', inplace=True)
 
-N225 = data_arrange(data=N225, date_column='Date', drop_column=['Volume', 'Adj Close'])
-N225.head()
+#%%
+fig, ax = plt.subplots(1,1)
+ax.plot(N225)
+plt.show
 
 #%%
 def zscore(training_data, data):
@@ -40,8 +40,9 @@ def original_scale(predicted_data, training_data_mean, training_data_std):
 #%%
 time_length = 24
 n_pred = 1
+target_column = 'NIKKEI225'
 
-def make_dataset(data, target_column):
+def make_dataset(data):
     
     inputs_data = []
     
@@ -60,14 +61,34 @@ def make_dataset(data, target_column):
     inputs_target_np = np.array(inputs_target)
 
     return inputs_data_np, inputs_target_np
+
 #%%
+# make Training data
+
+N225_train = N225.loc['1950-05-16 00:00:00':'2017-12-29 00:00:00', :]
+
+N225_train_normalized, N225_train_mean, N225_train_std = zscore(N225_train, N225_train)
+
+LSTM_inputs_data_train, LSTM_inputs_target_train = make_dataset(N225_train_normalized)
+
+#%%
+# make Test data
+
+N225_test = N225.loc['2018-01-04 00:00:00':'2019-01-15 00:00:00']
+
+N225_test_normalized, N225_test_mean, N225_test_std = zscore(N225_train, N225_test)
+
+LSTM_inputs_data_test, LSTM_inputs_target_test = make_dataset(N225_test_normalized)
+
+#%%
+'''
 N225_normalized, N225_mean, N225_std = zscore(N225, N225)
-LSTM_inputs_data, LSTM_inputs_target = make_dataset(N225_normalized, target_column='Close')
+LSTM_inputs_data, LSTM_inputs_target = make_dataset(N225_normalized)
 
 N225_test = N225[len(N225) - time_length:]
 N225_test_normalized, N225_test_mean, N225_test_std = zscore(N225, N225_test)
 LSTM_inputs_test_data = np.array(N225_test_normalized).reshape(1, time_length, len(N225_test_normalized.columns))
-
+'''
 
 #%%
 from keras.models import Sequential
@@ -81,9 +102,9 @@ from sklearn.metrics import mean_squared_error
 np.random.seed(123)
 
 #%%
-in_dim = LSTM_inputs_data.shape[2]
+in_dim = LSTM_inputs_data_train.shape[2]
 hidden_size = 858
-out_dim = 1
+out_dim = n_pred
 
 model = Sequential()
 model.add(CuDNNLSTM(hidden_size, return_sequences=False,
@@ -101,36 +122,38 @@ y_n = input("Use saved weight? [y/n] : ")
 while True:
     if y_n == 'y':
         model.load_weights('best_model_checkpint.h5')
+        with open('LSTM_history.pickle', mode='rb') as f:
+            LSTM_history = pickle.load(f)
         break
     elif y_n == 'n':
         early_stopping = EarlyStopping(monitor='val_loss', mode='auto', patience=10)
         model_checkpoint = ModelCheckpoint(filepath='best_model_checkpint.h5', monitor='val_loss', save_best_only=True)
-        LSTM_history = model.fit(LSTM_inputs_data, LSTM_inputs_target,
+        LSTM_history = model.fit(LSTM_inputs_data_train, LSTM_inputs_target_train,
                                  batch_size=128,
-                                 epochs=10,
+                                 epochs=100,
                                  validation_split=0.1,
                                  shuffle=False,
                                  callbacks=[model_checkpoint])
         model.save_weights('LSTM_weights.h5')
+        
+        with open('LSTM_history.pickle', mode='wb') as f:
+            pickle.dump(LSTM_history, f)
         break
     else:
         y_n = input("Wrong input caracter. Use saved weight? [y/n] : ")
 
 
 #%%
-base_line = mean_squared_error(LSTM_inputs_data[:,time_length-1,1], LSTM_inputs_target)
+base_line = mean_squared_error(LSTM_inputs_data_train[:,time_length-1,0], LSTM_inputs_target_train)
 print('base line : %.5f'%base_line)
 
 #%%
-import matplotlib.pyplot as plt
-#get_ipython().run_line_magic('matplotlib', 'inline')
-
 fig, ax = plt.subplots(1,1)
 ax.plot(LSTM_history.epoch, LSTM_history.history['loss'], label='training loss')
 ax.plot(LSTM_history.epoch, LSTM_history.history['val_loss'], label='validation loss')
 ax.hlines(base_line, 0, len(LSTM_history.epoch)-1, colors='r', linewidth=0.8, label='base line')
 ax.annotate('base line: %.5f'%base_line, 
-             xy=(0.72, 0.7),  xycoords='axes fraction',
+            xy=(0.72, 0.7),  xycoords='axes fraction',
             xytext=(0.72, 0.7), textcoords='axes fraction')
 ax.set_title('model loss')
 ax.set_ylabel('Mean Squared Error (MSE)',fontsize=12)
@@ -140,12 +163,27 @@ plt.tight_layout()
 plt.savefig("model_loss.png",dpi=300)
 plt.show()
 
+#%%
+def MSE(data, pred_data):
+    MSE = np.zeros(n_pred)
+    for i in range(n_pred):
+        MSE[i] = mean_squared_error(data[time_length+i:len(data)-n_pred+i+1]['Consumption'], pred_data[i])
+    return MSE
+
+#%%
+# model evaluate
+# mean absokute percentage error
+    
+def MAPE(data, pred_data):
+    MAPE = np.zeros(n_pred)
+    for i in range(n_pred):
+        MAPE[i] = 100 * np.mean(np.abs((data[time_length+i:len(data)-n_pred+i+1]['Consumption'] - pred_data[i])/pred_data[i]))
+    return MAPE
 
 #%%
 model.load_weights('best_model_checkpint.h5')
-predicted_N225_test = model.predict(LSTM_inputs_test_data)
-predicted_N225_test_original_scale = original_scale(predicted_N225_test, N225_mean['Close'], N225_std['Close'])
-
+predicted_N225_test = model.predict(LSTM_inputs_data_test)
+predicted_N225_test_original_scale = original_scale(predicted_N225_test, N225_train_mean['NIKKEI225'], N225_train_std['NIKKEI225'])
 
 #%%
 print(predicted_N225_test_original_scale)
