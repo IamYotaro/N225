@@ -12,7 +12,8 @@ drive.mount('/content/gdrive')
 #os.chdir(PATH)
 '''
 
-PATH = 'E:/AnacondaProjects/N225'
+#PATH = 'E:/AnacondaProjects/N225'
+PATH = 'C:/Users/s1887/AnacondaProjects/N225'
 #PATH = '/home/ky/AnacondaProjects/N225'
 os.chdir(PATH)
 
@@ -40,6 +41,7 @@ def original_scale(predicted_data, training_data_mean, training_data_std):
 #%%
 time_length = 24
 n_pred = 1
+train_column = 'NIKKEI225'
 target_column = 'NIKKEI225'
 
 def make_dataset(data):
@@ -48,6 +50,7 @@ def make_dataset(data):
     
     for i in range(len(data)-time_length-n_pred+1):
         temp_set = data[i:(i+time_length)].copy()
+        temp_set.loc[:, train_column] = temp_set[train_column] / temp_set[train_column].iloc[0] - 1
         inputs_data.append(temp_set)
     
     inputs_target = np.zeros(shape=(len(data)-time_length-n_pred+1, n_pred))
