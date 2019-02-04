@@ -128,6 +128,9 @@ from keras.layers import CuDNNLSTM
 from keras import optimizers
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.utils import plot_model
+from keras.initializers import glorot_uniform
+from keras.initializers import orthogonal
+from keras.initializers import TruncatedNormal
 
 np.random.seed(123)
 
@@ -135,16 +138,19 @@ np.random.seed(123)
 in_dim = LSTM_inputs_train_data.shape[2]
 out_dim = num_classes
 hidden_size = 64
-batch_size = 128
-epochs = 50
+batch_size = 32
+epochs = 300
 
 model = Sequential()
 model.add(CuDNNLSTM(hidden_size, return_sequences=False,
-               batch_input_shape=(None, time_length, in_dim)))
-model.add(Dense(out_dim, activation='linear'))
+               batch_input_shape=(None, time_length, in_dim),
+               kernel_initializer = glorot_uniform(seed=20190205),
+               recurrent_initializer = orthogonal(gain=1.0, seed=20190205)))
+model.add(Dense(out_dim, activation='linear',
+          kernel_initializer = glorot_uniform(seed=20190205)))
 
 adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['categorical_accuracy'])
 
 model.summary()
 plot_model(model, to_file='model.png', show_shapes=True)
@@ -159,13 +165,13 @@ while True:
         break
     elif y_n == 'n':
         early_stopping = EarlyStopping(monitor='val_loss', mode='auto', patience=10)
-        model_checkpoint = ModelCheckpoint(filepath='best_model_checkpint.h5', monitor='val_acc', save_best_only=True)
+        model_checkpoint = ModelCheckpoint(filepath='best_model_checkpint.h5', monitor='val_categorical_accuracy', save_best_only=True)
         LSTM_history = model.fit(LSTM_inputs_train_data, LSTM_inputs_target_train_data,
                                  batch_size=batch_size,
                                  epochs=epochs,
                                  validation_split=0.3,
                                  shuffle=False,
-                                 callbacks=[model_checkpoint])
+                                 callbacks=[early_stopping, model_checkpoint])
         model.save_weights('LSTM_weights.h5')
         
         with open('LSTM_history.pickle', mode='wb') as f:
@@ -177,8 +183,8 @@ while True:
 #%%
 loss = LSTM_history.history['loss']
 val_loss = LSTM_history.history['val_loss']
-acc = LSTM_history.history['acc']
-val_acc = LSTM_history.history['val_acc']
+acc = LSTM_history.history['categorical_accuracy']
+val_acc = LSTM_history.history['val_categorical_accuracy']
 
 fig, (ax1, ax2) = plt.subplots(2,1, figsize=(16,9))
 ax1.plot(range(len(loss)), loss, label='loss', color='blue')
@@ -200,8 +206,9 @@ plt.show()
 model.load_weights('best_model_checkpint.h5')
 predicted_test_data = model.predict(LSTM_inputs_test_data)
 
-print(predicted_test_data)
+loss_and_metrics = model.evaluate(LSTM_inputs_test_data, LSTM_inputs_target_test_data, verbose = 1)
 
-#%%
-loss_and_metrics = model.evaluate(LSTM_inputs_test_data, LSTM_inputs_target_test_data)
-print(loss_and_metrics)
+print('loss:', loss_and_metrics[0])
+print('accuracy:', loss_and_metrics[1])
+print('predicted_last_test_data:', predicted_test_data[-1])
+print('predicted_last_test_data_category:', np.argmax(predicted_test_data[-1,:]))
