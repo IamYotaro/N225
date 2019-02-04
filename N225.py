@@ -12,8 +12,8 @@ drive.mount('/content/gdrive')
 #os.chdir(PATH)
 '''
 
-#PATH = 'E:/AnacondaProjects/N225'
-PATH = 'C:/Users/s1887/AnacondaProjects/N225'
+PATH = 'E:/AnacondaProjects/N225'
+#PATH = 'C:/Users/s1887/AnacondaProjects/N225'
 #PATH = '/home/ky/AnacondaProjects/N225'
 os.chdir(PATH)
 
@@ -42,12 +42,12 @@ def volatility(data):
     for i in range(len(data)-1):
         volatility[i] = 100 * np.log(data[volatility_column].iloc[i+1] / data[volatility_column].iloc[i])
     volatility = pd.Series(data=volatility, index=data.iloc[1:].index, name=volatility_column)
+    volatility = pd.DataFrame(volatility)
     return volatility
 
 #%%
-N225 = volatility(N225)
-#%%
-N225 = pd.DataFrame(N225)
+data = volatility(N225)
+
 #%%
 def zscore(training_data, data):
     training_data_mean = np.mean(training_data, axis=0)
@@ -63,7 +63,7 @@ confidence_interval_99 = [-2.58, 2.58]
 
 #%%
 time_length = 24
-pred_category = 5
+num_classes = 5
 target_column = 'NIKKEI225'
 
 def make_dataset(data):
@@ -74,7 +74,7 @@ def make_dataset(data):
         temp_set = data[i:(i+time_length)].copy()
         inputs_data.append(temp_set)
     
-    inputs_target = np.zeros(shape=(len(data)-time_length, pred_category))
+    inputs_target = np.zeros(shape=(len(data)-time_length, num_classes))
     for i in range(len(data)-time_length):
         if data[target_column][time_length + i] < confidence_interval_99[0]:
             inputs_target[i, 0] = 1
@@ -97,55 +97,54 @@ def make_dataset(data):
 #%%
 # make Training data
 
-N225_train = N225.loc['1950-05-17 00:00:00':'2017-12-29 00:00:00', :]
+train_data = data.loc['1950-05-17 00:00:00':'2017-12-29 00:00:00', :]
 
-N225_train_normalized, N225_train_mean, N225_train_std = zscore(N225_train, N225_train)
+train_data_normalized, train_data_mean, train_train_std = zscore(train_data, train_data)
 
-LSTM_inputs_data_train, LSTM_inputs_target_train = make_dataset(N225_train_normalized)
+LSTM_inputs_train_data, LSTM_inputs_target_train_data = make_dataset(train_data_normalized)
 
 #%%
 # make Test data
 
-N225_test = N225.loc['2018-01-04 00:00:00':'2019-02-01 00:00:00']
+test_data = data.loc['2018-01-04 00:00:00':'2019-02-01 00:00:00']
 
-N225_test_normalized, N225_test_mean, N225_test_std = zscore(N225_train, N225_test)
+test_data_normalized, test_data_mean, test_data_std = zscore(train_data, test_data)
 
-LSTM_inputs_data_test, LSTM_inputs_target_test = make_dataset(N225_test_normalized)
+LSTM_inputs_test_data, LSTM_inputs_target_test_data = make_dataset(test_data_normalized)
 
 #%%
-'''
-N225_normalized, N225_mean, N225_std = zscore(N225, N225)
-LSTM_inputs_data, LSTM_inputs_target = make_dataset(N225_normalized)
-
-N225_test = N225[len(N225) - time_length:]
-N225_test_normalized, N225_test_mean, N225_test_std = zscore(N225, N225_test)
-LSTM_inputs_test_data = np.array(N225_test_normalized).reshape(1, time_length, len(N225_test_normalized.columns))
-'''
+fig, ax = plt.subplots(1, 1)
+hist = train_data_normalized.hist(bins=300, ax=ax)
+ax.vlines(-2.58, 0, 1000, colors='r', linewidth=0.8, label='-1%')
+ax.vlines(2.58, 0, 1000, colors='r', linewidth=0.8, label='1%')
+ax.legend()
+plt.show()
 
 #%%
 from keras.models import Sequential
 from keras.layers.core import Dense
-#from keras.layers import CuDNNLSTM
-from keras.layers.recurrent import LSTM
+from keras.layers import CuDNNLSTM
+#from keras.layers.recurrent import LSTM
 from keras import optimizers
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.utils import plot_model
-from sklearn.metrics import mean_squared_error
 
 np.random.seed(123)
 
 #%%
-in_dim = LSTM_inputs_data_train.shape[2]
+in_dim = LSTM_inputs_train_data.shape[2]
+out_dim = num_classes
 hidden_size = 64
-out_dim = pred_category
+batch_size = 128
+epochs = 50
 
 model = Sequential()
-model.add(LSTM(hidden_size, return_sequences=False,
+model.add(CuDNNLSTM(hidden_size, return_sequences=False,
                batch_input_shape=(None, time_length, in_dim)))
 model.add(Dense(out_dim, activation='linear'))
 
 adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
-model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['categorical_accuracy'])
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
 
 model.summary()
 plot_model(model, to_file='model.png', show_shapes=True)
@@ -160,11 +159,11 @@ while True:
         break
     elif y_n == 'n':
         early_stopping = EarlyStopping(monitor='val_loss', mode='auto', patience=10)
-        model_checkpoint = ModelCheckpoint(filepath='best_model_checkpint.h5', monitor='val_loss', save_best_only=True)
-        LSTM_history = model.fit(LSTM_inputs_data_train, LSTM_inputs_target_train,
-                                 batch_size=128,
-                                 epochs=30,
-                                 validation_split=0.1,
+        model_checkpoint = ModelCheckpoint(filepath='best_model_checkpint.h5', monitor='val_acc', save_best_only=True)
+        LSTM_history = model.fit(LSTM_inputs_train_data, LSTM_inputs_target_train_data,
+                                 batch_size=batch_size,
+                                 epochs=epochs,
+                                 validation_split=0.3,
                                  shuffle=False,
                                  callbacks=[model_checkpoint])
         model.save_weights('LSTM_weights.h5')
@@ -175,49 +174,34 @@ while True:
     else:
         y_n = input("Wrong input caracter. Use saved weight? [y/n] : ")
 
-
 #%%
-base_line = mean_squared_error(LSTM_inputs_data_train[:,time_length-1,0], LSTM_inputs_target_train)
-print('base line : %.5f'%base_line)
+loss = LSTM_history.history['loss']
+val_loss = LSTM_history.history['val_loss']
+acc = LSTM_history.history['acc']
+val_acc = LSTM_history.history['val_acc']
 
-#%%
-fig, ax = plt.subplots(1,1)
-ax.plot(LSTM_history.epoch, LSTM_history.history['loss'], label='training loss')
-ax.plot(LSTM_history.epoch, LSTM_history.history['val_loss'], label='validation loss')
-ax.hlines(base_line, 0, len(LSTM_history.epoch)-1, colors='r', linewidth=0.8, label='base line')
-ax.annotate('base line: %.5f'%base_line, 
-            xy=(0.72, 0.7),  xycoords='axes fraction',
-            xytext=(0.72, 0.7), textcoords='axes fraction')
-ax.set_title('model loss')
-ax.set_ylabel('Mean Squared Error (MSE)',fontsize=12)
-ax.set_xlabel('Epochs',fontsize=12)
-plt.legend()
-plt.tight_layout()
-plt.savefig("model_loss.png",dpi=300)
+fig, (ax1, ax2) = plt.subplots(2,1, figsize=(16,9))
+ax1.plot(range(len(loss)), loss, label='loss', color='blue')
+ax1.plot(range(len(val_loss)), val_loss, label='val_loss', color='red')
+ax1.set_xlabel('epochs', fontsize=12)
+ax1.set_ylabel('loss', fontsize=12)
+ax1.grid(which='major',color='gray',linestyle='--')
+ax1.legend(fontsize=12)
+ax2.plot(range(len(acc)), acc, label='acc', color='blue')
+ax2.plot(range(len(val_acc)), val_acc, label='val_acc', color='red')
+ax2.set_xlabel('epochs', fontsize=12)
+ax2.set_ylabel('accuracy', fontsize=12)
+ax2.grid(which='major',color='gray',linestyle='--')
+ax2.legend(fontsize=12)
+plt.savefig('model_loss_acc.png', dpi=300)
 plt.show()
 
 #%%
-def MSE(data, pred_data):
-    MSE = np.zeros(n_pred)
-    for i in range(n_pred):
-        MSE[i] = mean_squared_error(data[time_length+i:len(data)-n_pred+i+1]['Consumption'], pred_data[i])
-    return MSE
-
-#%%
-# model evaluate
-# mean absokute percentage error
-    
-def MAPE(data, pred_data):
-    MAPE = np.zeros(n_pred)
-    for i in range(n_pred):
-        MAPE[i] = 100 * np.mean(np.abs((data[time_length+i:len(data)-n_pred+i+1]['Consumption'] - pred_data[i])/pred_data[i]))
-    return MAPE
-
-#%%
 model.load_weights('best_model_checkpint.h5')
-predicted_N225_test = model.predict(LSTM_inputs_data_test)
-#%%
-predicted_N225_test_original_scale = original_scale(predicted_N225_test, N225_train_mean['NIKKEI225'], N225_train_std['NIKKEI225'])
+predicted_test_data = model.predict(LSTM_inputs_test_data)
+
+print(predicted_test_data)
 
 #%%
-print(predicted_N225_test_original_scale)
+loss_and_metrics = model.evaluate(LSTM_inputs_test_data, LSTM_inputs_target_test_data)
+print(loss_and_metrics)
