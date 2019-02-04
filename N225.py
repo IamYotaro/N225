@@ -149,7 +149,7 @@ model.add(CuDNNLSTM(hidden_size, return_sequences=False,
 model.add(Dense(out_dim, activation='linear',
           kernel_initializer = glorot_uniform(seed=20190205)))
 
-adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=None, decay=0.0, amsgrad=False)
+adam = optimizers.Nadam(lr=0.002, beta_1=0.9, beta_2=0.999, epsilon=None, schedule_decay=0.004)
 model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['categorical_accuracy'])
 
 model.summary()
