@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import os
 import pandas_datareader.data as pdr
 import datetime
@@ -37,23 +36,18 @@ def data_scraping_yahoo(file_name, target):
 N225 = data_scraping_yahoo(file_name='N225', target='^N225')
 DJIA = data_scraping_yahoo(file_name='DJIA', target='^DJI')
 
-#%%
-def volatility(data, data_name):
-    volatility_column = [data_name+'_'+i for i in ['High', 'Low', 'Open', 'Close', 'AdjClose']]
-    volatility = np.zeros(shape=(len(data)-1, len(volatility_column)))
-    for i in range(len(volatility_column)):
-        for j in range(len(data)-1):
-            volatility[j, i] = 100 * np.log(data[volatility_column].iloc[j+1,i] / data[volatility_column].iloc[j,i])
-    volatility = pd.DataFrame(data=volatility, index=data.iloc[1:].index, columns=volatility_column)
-    return volatility
-
-#%%
-N225_volatility = volatility(data=N225, data_name='N225')
-DJIA_volatility = volatility(data=DJIA, data_name='DJIA')
-
-#%%
-N225_volume = N225['N225_Volume'].iloc[1:]
-DJIA_volume = DJIA['DJIA_Volume'].iloc[1:]
-all_data = pd.concat([N225_volatility, N225_volume, DJIA_volatility, DJIA_volume], axis=1)
+all_data = pd.concat([N225, DJIA], axis=1)
 all_data.dropna(how='any', inplace=True)
 all_data.to_csv(os.path.join('DATA', 'all_data.csv'))
+
+#%%
+drop_list = ['N225_Volume', 'DJIA_Volume']
+all_data.drop(drop_list, axis=1, inplace=True)
+
+train_data = all_data.loc[:'2017-10-31 00:00:00']
+validation_data = all_data.loc['2017-11-01 00:00:00':'2018-07-31 00:00:00']
+test_data = all_data.loc['2018-08-01 00:00:00':]
+
+train_data.to_csv(os.path.join('DATA', 'train_data.csv'))
+validation_data.to_csv(os.path.join('DATA', 'validation_data.csv'))
+test_data.to_csv(os.path.join('DATA', 'test_data.csv'))

@@ -116,7 +116,7 @@ def model_by_BayesianOptimization(time_length,
     model.summary()
 
     early_stopping = EarlyStopping(monitor='categorical_accuracy', mode='auto', patience=10)
-    model_checkpoint = ModelCheckpoint(filepath=os.path.join('BayesianOptimization', 'best_model_checkpint.h5'), monitor='val_loss', save_best_only=True, mode='auto')
+    model_checkpoint = ModelCheckpoint(filepath=os.path.join('BO', 'best_model_checkpint.h5'), monitor='val_loss', save_best_only=True, mode='auto')
     model.fit(LSTM_inputs_train_data,
               LSTM_inputs_target_train_data,
               batch_size=batch_size,
@@ -124,9 +124,9 @@ def model_by_BayesianOptimization(time_length,
               validation_data=(LSTM_inputs_validation_data, LSTM_inputs_target_validation_data),
               shuffle=False,
               callbacks=[early_stopping, model_checkpoint])
-    model.save_weights(os.path.join('BayesianOptimization', 'LSTM_weights.h5'))
+    model.save_weights(os.path.join('BO', 'LSTM_weights.h5'))
     
-    model.load_weights(os.path.join('BayesianOptimization', 'best_model_checkpint.h5'))
+    model.load_weights(os.path.join('BO', 'best_model_checkpint.h5'))
 
     loss_and_metrics = model.evaluate(LSTM_inputs_validation_data, LSTM_inputs_target_validation_data, verbose = 1)
 
@@ -152,7 +152,7 @@ max_BO = optimizer.res['max']
 print(max_BO)
 
 #%%
-with open(os.path.join('BayesianOptimization', 'all_BO.pickle'), 'wb') as f:
+with open(os.path.join('BO', 'all_BO.pickle'), 'wb') as f:
     pickle.dump(all_BO, f)
     
 all_BO_values = np.zeros(n_iter)

@@ -17,25 +17,23 @@ PATH = 'E:/AnacondaProjects/N225'
 os.chdir(PATH)
 
 #%%
-def read_data(file_name):
+def read_data_pandas(file_name):
     data = pd.read_csv(os.path.join('DATA', file_name))
     data.set_index('Date', inplace=True)
     data.index = pd.to_datetime(data.index)
     return data
 
 #%%
-N225 = read_data(file_name='N225.csv')
-DJIA = read_data(file_name='DJIA.csv')
+N225 = read_data_pandas(file_name='N225.csv')
+DJIA = read_data_pandas(file_name='DJIA.csv')
 
-all_data = read_data(file_name='all_data.csv')
+all_data = read_data_pandas(file_name='all_data.csv')
 
-drop_list = ['N225_Volume', 'DJIA_Volume']
-all_data.drop(drop_list, axis=1, inplace=False)
+train_data = read_data_pandas(file_name='train_data.csv')
+validation_data = read_data_pandas(file_name='validation_data.csv')
+test_data = read_data_pandas(file_name='test_data.csv')
 
-#%%
-fig, ax = plt.subplots(1,1)
-ax.plot(N225['N225_Close'])
-plt.show
+train_data_wavelet_log_diff = np.loadtxt(os.path.join('DATA', 'train_data_wavelet_log_diff.csv'), delimiter=',')
 
 #%%
 def zscore(training_data, data):
@@ -79,7 +77,6 @@ def make_dataset(data):
 
 #%%
 # make Training data
-
 train_data = all_data.loc[:'2017-10-31 00:00:00']
 
 train_data_normalized = zscore(train_data, train_data)
